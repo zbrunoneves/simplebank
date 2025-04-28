@@ -2,21 +2,21 @@
 // versions:
 //   sqlc v1.27.0
 
-package db
+package sqlc
 
 import (
 	"time"
 )
 
 type Account struct {
-	ID        uint32
+	ID        int32
 	Owner     string
 	Balance   int64
 	Currency  string
 	CreatedAt time.Time
 }
 
-type Entry struct {
+type Operation struct {
 	ID        uint32
 	AccountID uint32
 	Amount    int64

@@ -3,7 +3,7 @@
 //   sqlc v1.27.0
 // source: account.sql
 
-package db
+package sqlc
 
 import (
 	"context"
@@ -33,7 +33,7 @@ delete from account
 where id = ?
 `
 
-func (q *Queries) DeleteAccount(ctx context.Context, id uint32) (sql.Result, error) {
+func (q *Queries) DeleteAccount(ctx context.Context, id int32) (sql.Result, error) {
 	return q.db.ExecContext(ctx, deleteAccount, id)
 }
 
@@ -43,7 +43,7 @@ where id = ?
 limit 1
 `
 
-func (q *Queries) GetAccount(ctx context.Context, id uint32) (Account, error) {
+func (q *Queries) GetAccount(ctx context.Context, id int32) (Account, error) {
 	row := q.db.QueryRowContext(ctx, getAccount, id)
 	var i Account
 	err := row.Scan(
@@ -104,7 +104,7 @@ where id = ?
 
 type UpdateAccountParams struct {
 	Balance int64
-	ID      uint32
+	ID      int32
 }
 
 func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (sql.Result, error) {
