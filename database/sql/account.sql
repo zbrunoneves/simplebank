@@ -8,12 +8,11 @@ insert into account(
 -- name: GetAccount :one
 select * from account
 where id = ?
-limit 1;
+limit 1
+for share;
 
 -- name: GetAccounts :many
-select * from account
-order by id
-limit ? offset ?;
+
 
 -- name: UpdateAccount :execresult
 update account

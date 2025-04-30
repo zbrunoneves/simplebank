@@ -1,13 +1,17 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"os"
 
+	"simplebank/api"
 	"simplebank/config"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
@@ -20,7 +24,17 @@ func main() {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 	}
 
-	_ = config.New()
+	settings := config.New()
 
-	log.Info().Msg("welcome to simplebank!")
+	db, err := sql.Open("mysql", settings.DatabaseURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to db")
+	}
+
+	server := api.NewServer(db)
+
+	err = server.Start(":8080")
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to start server")
+	}
 }

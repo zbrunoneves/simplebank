@@ -1,8 +1,8 @@
 create table account (
-		id int primary key auto_increment,
+		id int unsigned primary key auto_increment,
         owner varchar(255) not null,
         balance bigint not null default 0,
-        currency varchar(3) not null,
+        currency varchar(3) not null default 'USD',
         created_at timestamp not null default current_timestamp,
 
         index idx_owner (owner)
