@@ -1,17 +1,15 @@
 package main
 
 import (
-	"database/sql"
 	"flag"
 	"os"
 
 	"simplebank/api"
 	"simplebank/config"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
@@ -26,15 +24,7 @@ func main() {
 
 	settings := config.New()
 
-	db, err := sql.Open("mysql", settings.DatabaseURL)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to connect to db")
-	}
-
-	server := api.NewServer(db)
-
-	err = server.Start(":8080")
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to start server")
-	}
+	server := api.NewServer(settings)
+	server.Start(":8081")
+	// no code bellow this line will execute until server shutdown
 }

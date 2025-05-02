@@ -1,7 +1,6 @@
 package account
 
 import (
-	"context"
 	"database/sql"
 	"os"
 )
@@ -27,7 +26,7 @@ func (r *Repository) CreateAccount(params CreateAccountParams) (int, error) {
 		return -1, err
 	}
 
-	res, err := r.db.ExecContext(context.Background(), string(qry), params.Owner, params.Currency)
+	res, err := r.db.Exec(string(qry), params.Owner, params.Currency)
 	if err != nil {
 		return -1, err
 	}
@@ -51,7 +50,7 @@ func (r *Repository) ListAccounts(params ListAccountsParams) ([]Account, error) 
 		return nil, err
 	}
 
-	rows, err := r.db.QueryContext(context.Background(), string(qry), params.Limit, params.Offset)
+	rows, err := r.db.Query(string(qry), params.Limit, params.Offset)
 	if err != nil {
 		return nil, err
 	}

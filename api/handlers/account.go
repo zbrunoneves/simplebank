@@ -1,23 +1,30 @@
-package api
+package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"simplebank/service/account"
+	"simplebank/tasks"
 
+	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 )
 
 type AccountHandler struct {
 	AccountRepository *account.Repository
+	TaskClient        *asynq.Client
 }
 
-func NewAccountHandler(db *sql.DB) *AccountHandler {
+func NewAccountHandler(db *sql.DB, taskClient *asynq.Client) *AccountHandler {
 	return &AccountHandler{
 		AccountRepository: account.NewRepository(db),
+		TaskClient:        taskClient,
 	}
 }
 
@@ -43,6 +50,24 @@ func (h *AccountHandler) CreateAccount(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
+
+	email := strings.ToLower(strings.ReplaceAll(reqBody.Owner, " ", "-")) + "@gmail.com"
+	task, err := tasks.NewEmailDeliveryTask(email)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Errorf("could not create email task: %w", err))
+	}
+
+	info, err := h.TaskClient.Enqueue(task,
+		asynq.Queue(tasks.QueueCritical),
+		asynq.ProcessIn(5*time.Second),
+		asynq.MaxRetry(3),
+		asynq.Timeout(10*time.Second),
+	)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Errorf("could not schedule email task: %w", err))
+	}
+
+	log.Info().Msgf("enqueued task: id=%s queue=%s", info.ID, info.Queue)
 
 	return c.JSON(http.StatusOK, map[string]any{
 		"id": id,
@@ -85,7 +110,6 @@ func (h *AccountHandler) ListAccounts(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
 
-	// Convert to response body
 	res := make([]AccountResponseBody, len(accounts))
 	for i, a := range accounts {
 		res[i] = AccountResponseBody{

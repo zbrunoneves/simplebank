@@ -1,101 +1,74 @@
 package api
 
 import (
-	"bytes"
+	"context"
 	"database/sql"
-	"io"
+	"errors"
 	"net/http"
-	"regexp"
-	"strings"
+	"os"
+	"os/signal"
+	"time"
 
-	"github.com/go-playground/validator/v10"
+	"simplebank/config"
+
+	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog/log"
 )
 
 type (
 	Server struct {
-		e *echo.Echo
-	}
-
-	Validator struct {
-		validate *validator.Validate
+		webServer   *echo.Echo
+		tasksClient *asynq.Client
+		tasksServer *asynq.Server
 	}
 )
 
-func NewServer(db *sql.DB) *Server {
-	e := echo.New()
-	e.Validator = &Validator{validate: validator.New()}
+func NewServer(settings *config.Settings) *Server {
+	db, err := sql.Open("mysql", settings.DatabaseURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to db")
+	}
 
-	e.HideBanner = true
-	e.Pre(middleware.RemoveTrailingSlash())
-	e.Use(middleware.Recover())
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogURI:    true,
-		LogMethod: true,
-		LogStatus: true,
-		LogError:  true,
-		BeforeNextFunc: func(c echo.Context) {
-			var buf bytes.Buffer
-			tee := io.TeeReader(c.Request().Body, &buf)
-
-			b, err := io.ReadAll(tee)
-			if err != nil {
-				return
-			}
-			s := strings.ReplaceAll(string(b), "\n", " ")
-			re := regexp.MustCompile(`\s{2,}`)
-			s = re.ReplaceAllString(s, " ")
-			c.Set("body", strings.TrimSpace(s))
-
-			c.Request().Body = io.NopCloser(bytes.NewReader(buf.Bytes()))
-		},
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			l := log.Info()
-			if v.Error != nil {
-				l = log.Error()
-			}
-
-			body := c.Get("body").(string)
-			if len(body) > 0 {
-				l = l.Str("body", body)
-			}
-
-			l.Str("uri", v.URI).
-				Str("method", v.Method).
-				Int("status", v.Status).
-				Msg("request")
-
-			return nil
-		},
-	}))
-
-	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, "WORKING")
-	})
-
-	e.POST("/v1/accounts", func(c echo.Context) error {
-		h := NewAccountHandler(db)
-		return h.CreateAccount(c)
-	})
-
-	e.GET("/v1/accounts", func(c echo.Context) error {
-		h := NewAccountHandler(db)
-		return h.ListAccounts(c)
-	})
+	tasksClient := asynq.NewClient(asynq.RedisClientOpt{Addr: settings.RedisURL})
 
 	return &Server{
-		e: e,
+		webServer:   NewWebServer(db, tasksClient),
+		tasksClient: tasksClient,
+		tasksServer: NewTasksServer(settings.RedisURL),
 	}
 }
 
-func (s *Server) Start(address string) error {
-	return s.e.Start(address)
-}
-func (v *Validator) Validate(i any) error {
-	if err := v.validate.Struct(i); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err)
+func (s *Server) Start(addr string) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	go func() {
+		if err := s.webServer.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal().Msg("shutting down web server")
+		}
+	}()
+	log.Info().Msgf("web server running on %s", addr)
+
+	go func() {
+		mux := TasksServerMux()
+		if err := s.tasksServer.Start(mux); err != nil {
+			log.Fatal().Err(err).Msg("could not run tasks server")
+		}
+	}()
+	log.Info().Msg("tasks server started processing")
+
+	<-ctx.Done()
+
+	log.Info().Msg("shutting down web server")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.webServer.Shutdown(ctx); err != nil {
+		log.Fatal().Err(err).Send()
 	}
-	return nil
+
+	log.Info().Msg("shutting down tasks server")
+	s.tasksClient.Close()
+	s.tasksServer.Shutdown()
 }

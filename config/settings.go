@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -8,16 +9,25 @@ import (
 )
 
 type Settings struct {
+	AppEnv      string
 	DatabaseURL string
+	RedisURL    string
 }
 
 func New() *Settings {
-	err := godotenv.Load()
+	env := os.Getenv("APP_ENV")
+	if env == "" {
+		env = "local"
+	}
+
+	err := godotenv.Load(fmt.Sprintf("%s.env", env))
 	if err != nil {
-		log.Warn().Msg("error parsing .env file")
+		log.Warn().Err(err).Send()
 	}
 
 	return &Settings{
+		AppEnv:      env,
 		DatabaseURL: os.Getenv("MYSQL_URL"),
+		RedisURL:    os.Getenv("REDIS_URL"),
 	}
 }

@@ -1,5 +1,3 @@
-include .env
-
 .PHONY: run
 run:
 	@go run main.go --debug
@@ -17,4 +15,10 @@ db:
 		-e MYSQL_USER=admin \
 		-e MYSQL_PASSWORD=123 \
 		-p 3306:3306 -d mysql:9.3.0
+	@echo "done."
+
+.PHONY: redis
+redis:
+	@echo "starting redis..."
+	@docker run --name redis --rm -p 6379:6379 -d redis:7.4.3
 	@echo "done."
